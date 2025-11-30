@@ -13,9 +13,5 @@ Testbench project for ESP32-WROOM microcontroller and various peripheral devices
 
 ## Project functionality demonstration
 
-<!--[![Video demonstration](https://github.com/Tomhauscz/ESP32_WROOM_hardware_testbench/blob/main/media/demo_video_thumbnail.jpg)](https://raw.github.com/Tomhauscz/ESP32_WROOM_hardware_testbench/blob/main/media/demo_video.mp4)-->
+https://github.com/user-attachments/assets/7f806991-19e3-4a33-a728-54c83ae1f493
 
-<video controls width="640">
-  <source src="media/demo_video.mp4" type="video/mp4">
-  Your browser does not support the video tag.
-</video>
