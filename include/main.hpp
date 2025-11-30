@@ -29,7 +29,7 @@ extern "C" {
 #include <LovyanGFX.hpp>            // ST7789 display library
 #include <LGFX_setup.hpp>
 
-#include <RotaryEncoder.hpp>        // My custom rotary encoder library
+#include <RotaryEncoder.hpp>        // Custom rotary encoder library
 
 #define DISPLAY_DRIVER_ST7789       0
 #define DISPLAY_DRIVER_ST7796       1
