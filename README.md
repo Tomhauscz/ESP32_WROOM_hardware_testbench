@@ -11,6 +11,6 @@ Testbench project for ESP32-WROOM microcontroller and various peripheral devices
 | GPIO | Push buttons |
 
 
-## Project functionality demostration
+## Project functionality demonstration
 
 [![Video demonstration](https://github.com/Tomhauscz/ESP32_WROOM_hardware_testbench/blob/main/media/demo_video_thumbnail.jpg)](https://github.com/Tomhauscz/ESP32_WROOM_hardware_testbench/blob/main/media/demo_video.mp4)
