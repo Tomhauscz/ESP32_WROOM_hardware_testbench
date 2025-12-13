@@ -9,10 +9,11 @@
 
 /* GLOBAL VARIABLES */
 // I2C bus
-i2c_dev_t i2c_dev_bus_num_0;
+static i2c_dev_t i2c_bus;
 
 // VL53L0X sensor instance
 static vl53l0x_t* TOF_device;
+static i2c_dev_t TOF_i2c_dev;
 volatile uint16_t TOF_distance = 0;
 
 // ST7789 TFT display instance
@@ -26,7 +27,7 @@ int64_t rot_counter = 0;
 
 // PCA9685 16-channel PWM driver
 static uint16_t PCA9685_PWM_freq_actual = 0;
-volatile uint16_t servo_pulse_width = 0;	// [counts]
+static i2c_dev_t PCA9685_i2c_dev;
 volatile bool servo_enable = false;
 
 // Queue handlers
@@ -45,19 +46,27 @@ extern "C" void app_main(void)
 	i2c_scan();
 
 	/* === setup the I2C bus */
-	i2c_dev_bus_num_0.port = TOF_sensor_I2C_PORT_NUM;
-	i2c_dev_bus_num_0.addr = TOF_sensor_I2C_address;
-	i2c_dev_bus_num_0.addr_bit_len = I2C_ADDR_BIT_LEN_7;
-	i2c_dev_bus_num_0.cfg.sda_io_num = GPIO_NUM_21;
-	i2c_dev_bus_num_0.cfg.scl_io_num = GPIO_NUM_22;
-	i2c_dev_bus_num_0.cfg.sda_pullup_en = true;
-	i2c_dev_bus_num_0.cfg.scl_pullup_en = true;
-	i2c_dev_bus_num_0.cfg.master.clk_speed = I2C_FREQ_HZ;
+	i2c_bus.port = I2C_PORT_NUM;
+	i2c_bus.cfg.sda_io_num = GPIO_NUM_21;
+	i2c_bus.cfg.scl_io_num = GPIO_NUM_22;
+	i2c_bus.cfg.sda_pullup_en = true;
+	i2c_bus.cfg.scl_pullup_en = true;
+	i2c_bus.cfg.master.clk_speed = I2C_FREQ_HZ;
 
-	/* === init the TOF device and create I2C mutex */
-	ESP_ERROR_CHECK(i2c_dev_create_mutex(&i2c_dev_bus_num_0));
+	/* === create I2C mutex */
+	ESP_ERROR_CHECK(i2c_dev_create_mutex(&i2c_bus));
 	
-	TOF_device = vl53l0x_config(&i2c_dev_bus_num_0, GPIO_NUM_5, 0);
+	/* === per-device descriptors cloning of shared I2C bus */
+	TOF_i2c_dev = i2c_bus;
+	TOF_i2c_dev.addr = TOF_sensor_I2C_address;
+	TOF_i2c_dev.addr_bit_len = I2C_ADDR_BIT_LEN_7;
+
+	PCA9685_i2c_dev = i2c_bus;
+	PCA9685_i2c_dev.addr = Servo_PWM_driver_I2C_write_address;
+	PCA9685_i2c_dev.addr_bit_len = I2C_ADDR_BIT_LEN_7;
+
+	/* === init the TOF device */
+	TOF_device = vl53l0x_config(&TOF_i2c_dev, GPIO_NUM_16, 0);
 	esp_err_t tof_init_err = vl53l0x_init(TOF_device);
 
 	char tof_init_err_txt[140];
@@ -67,7 +76,6 @@ extern "C" void app_main(void)
 	} else {
 		sprintf(tof_init_err_txt, "Success");
 	}
-	
 	ESP_LOGI(TOF_tag, "Init return value: %s", tof_init_err_txt);
 	
 	// start continuous measurements
@@ -76,7 +84,7 @@ extern "C" void app_main(void)
 	
 
 	/* === init TFT display */
-	disp.LGFX_config(GPIO_NUM_18, GPIO_NUM_23, GPIO_NUM_19, GPIO_NUM_25, PANEL_ST7796);		// My wrapper config
+	disp.LGFX_config(GPIO_NUM_17, GPIO_NUM_18, GPIO_NUM_5, GPIO_NUM_25, PANEL_ST7796);		// My wrapper config
 	disp.LGFX_init();		// My wrapper init
 	bool disp_init_ret = disp.init();	// LovyanGFX Library init
 	ESP_LOGI(DISP_tag, "Init return value: %s", (disp_init_ret) ? "Success" : "FAIL");
@@ -107,24 +115,19 @@ extern "C" void app_main(void)
 	rotenc->init();
 
 	/* === init PCA9685 driver for Servo motors */
-	ESP_ERROR_CHECK(pca9685_init_desc(
-		&i2c_dev_bus_num_0,
-		Servo_PWM_driver_I2C_write_address,
-		Servo_PWM_driver_I2C_PORT_NUM,
-		i2c_dev_bus_num_0.cfg.sda_io_num,
-		i2c_dev_bus_num_0.cfg.scl_io_num,
-		i2c_dev_bus_num_0.cfg.master.clk_speed)
-	);
-	ESP_ERROR_CHECK(pca9685_init(&i2c_dev_bus_num_0));
+	ESP_ERROR_CHECK(pca9685_init(&PCA9685_i2c_dev));
 	// restart the device
-	ESP_ERROR_CHECK(pca9685_restart(&i2c_dev_bus_num_0));
+	ESP_ERROR_CHECK(pca9685_restart(&PCA9685_i2c_dev));
 	// setup frequency
 	
-	ESP_ERROR_CHECK(pca9685_set_pwm_frequency(&i2c_dev_bus_num_0, Servo_PWM_driver_I2C_PWM_freq));
-	ESP_ERROR_CHECK(pca9685_get_pwm_frequency(&i2c_dev_bus_num_0, &PCA9685_PWM_freq_actual));
+	ESP_ERROR_CHECK(pca9685_set_pwm_frequency(&PCA9685_i2c_dev, Servo_PWM_driver_I2C_PWM_freq));
+	ESP_ERROR_CHECK(pca9685_get_pwm_frequency(&PCA9685_i2c_dev, &PCA9685_PWM_freq_actual));
 
 	ESP_LOGI(PCA9685_tag, "Setup freq: %dHz, actual: %dHz", Servo_PWM_driver_I2C_PWM_freq, PCA9685_PWM_freq_actual);
 
+
+	// === check if both i2c devices share the same mutex after their initialization
+	assert(TOF_i2c_dev.mutex == PCA9685_i2c_dev.mutex);
 
 	/* ====== Other initial setup ====== */
 
@@ -145,7 +148,9 @@ extern "C" void app_main(void)
 	xTaskCreate(Timer_task, "Timer_task", 2048, NULL, 8, NULL);
 	xTaskCreate(Buttons_task, "Buttons_task", 4096, NULL, 10, NULL);
 	xTaskCreate(Rotary_encoder_task, "Rotary_encoder_task", 4096, NULL, 6, NULL);
-	xTaskCreate(TOF_sensor_meas_task, "TOF_sensor_meas_task", 4096, NULL, 5, NULL);
+	if (tof_cont_meas_err == ESP_OK) {
+		xTaskCreate(TOF_sensor_meas_task, "TOF_sensor_meas_task", 4096, NULL, 5, NULL);
+	}
 	xTaskCreate(Servo_motors_task, "Servo_motors_task", 4096, NULL, 7, NULL);
 	xTaskCreate(TFT_ST7789_display_task, "TFT_display_task", 4096, NULL, 9, NULL);
 }
@@ -153,8 +158,6 @@ extern "C" void app_main(void)
 /* FreeRTOS task functions */
 void TOF_sensor_meas_task(void* pvParameter)
 {
-	static uint8_t cycle_counter = 0;
-
 	uint16_t measured_distance = 0x0000;
 
 	for (;;) {
@@ -168,20 +171,8 @@ void TOF_sensor_meas_task(void* pvParameter)
 			vl53l0x_stopContinuous(TOF_device);
 			vTaskDelay(pdMS_TO_TICKS(10));
 			vl53l0x_startContinuous(TOF_device, TOF_SENSOR_MEAS_TASK_PERIOD);
-
-			cycle_counter = 0;
 		} else {
 			TOF_distance = measured_distance;
-		}
-
-		if (++cycle_counter >= TOF_SENSOR_RESTART_CYCLE_COUNT) {
-			cycle_counter = 0;
-			ESP_LOGW(TOF_tag, "Continuous measurement restart");
-
-			// Periodic restart of continuous measurement
-			vl53l0x_stopContinuous(TOF_device);
-			vTaskDelay(pdMS_TO_TICKS(10));
-			vl53l0x_startContinuous(TOF_device, TOF_SENSOR_MEAS_TASK_PERIOD);
 		}
 
 		vTaskDelay(pdMS_TO_TICKS(TOF_SENSOR_MEAS_TASK_PERIOD));
@@ -304,17 +295,17 @@ void Servo_motors_task(void* pvParameter)
 
 	for (;;) {
 		// update servo_pulse_width based on Rotary encoder counter
-		servo_pulse_width = getServoCounts((float)rot_counter);
+		uint16_t servo_pulse_width = getServoCounts((float)rot_counter);
 
 		if (servo_pulse_width != servo_pwm_val_prev) {
 			servo_pwm_val_prev = servo_pulse_width;
 
-			ESP_LOGI(PCA9685_tag, "Servo PWM value: %d", servo_pulse_width);
+			//ESP_LOGI(PCA9685_tag, "Servo PWM value: %d", servo_pulse_width);
 
-			if (pca9685_set_pwm_value(&i2c_dev_bus_num_0, Servo_PWM_driver_channel, servo_pulse_width) != ESP_OK)
+			if (pca9685_set_pwm_value(&PCA9685_i2c_dev, Servo_PWM_driver_channel, servo_pulse_width) != ESP_OK)
 				ESP_LOGE(PCA9685_tag, "Could not set PWM value to CH%d", Servo_PWM_driver_channel);	
 		}
-		vTaskDelay(pdMS_TO_TICKS(1));
+		vTaskDelay(pdMS_TO_TICKS(20));
 	}
 }
 

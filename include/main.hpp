@@ -36,8 +36,9 @@ extern "C" {
 
 /* Global defines */
 #define I2C_FREQ_HZ                         100000 // 100 kHz
+#define I2C_PORT_NUM                        I2C_NUM_0
 // TOF sensor
-#define TOF_sensor_I2C_PORT_NUM				I2C_NUM_0
+#define TOF_sensor_I2C_PORT_NUM				I2C_PORT_NUM
 #define TOF_sensor_I2C_address				0x29
 
 // Buttons
@@ -46,9 +47,9 @@ extern "C" {
 #define BTN3_PIN    GPIO_NUM_34
 
 // 16-channel PWM driver PCA9685
-#define Servo_PWM_driver_I2C_PORT_NUM		I2C_NUM_0
+#define Servo_PWM_driver_I2C_PORT_NUM		I2C_PORT_NUM
 #define Servo_PWM_driver_I2C_write_address	(PCA9685_ADDR_BASE | 0x14)       // (0b01 010100) - lower 6 bit are setup in hardware
-#define Servo_PWM_driver_I2C_PWM_freq       100        // Frequency of PWM outputs. The maximum PWM frequency is 1526 Hz, and the minimum PWM frequency is 24 Hz. See "7.3.5 PWM frequency PRE_SCALE" in the datasheet.
+#define Servo_PWM_driver_I2C_PWM_freq       250        // Frequency of PWM outputs. The maximum PWM frequency is 1526 Hz, and the minimum PWM frequency is 24 Hz. See "7.3.5 PWM frequency PRE_SCALE" in the datasheet.
 #define Servo_PWM_driver_channel            PCA9685_CHANNEL_0
 
 // DS3230 Pro-270 values
@@ -63,10 +64,9 @@ extern "C" {
 #define TFT_ST7789_DISPLAY_TASK_PERIOD      250
 #define BUTTONS_TASK_PERIOD                 20
 #define ROTARY_ENCODER_TASK_PERIOD          0
-#define TIMER_TASK_PERIOD                   500
+#define TIMER_TASK_PERIOD                   2000
 
 #define TOF_SENSOR_RESTART_PERIOD           30000
-#define TOF_SENSOR_RESTART_CYCLE_COUNT      ((uint16_t)(TOF_SENSOR_RESTART_PERIOD / TOF_SENSOR_MEAS_TASK_PERIOD))
 
 /* TYPEDEFS */
 typedef enum {

@@ -363,7 +363,7 @@ esp_err_t i2c_dev_write_reg(const i2c_dev_t *dev, uint8_t reg, const void *data,
         {                                                                                                                                                                                              \
             /* Give mutex ONLY if error occurred */                                                                                                                                                    \
             i2c_dev_give_mutex(dev);                                                                                                                                                                   \
-            ESP_LOGE(TAG_PCA9685, msg, ##__VA_ARGS__);                                                                                                                                                         \
+            ESP_LOGE(TAG, msg, ##__VA_ARGS__);                                                                                                                                                         \
             return ___;                                                                                                                                                                                \
         }                                                                                                                                                                                              \
     }                                                                                                                                                                                                  \
