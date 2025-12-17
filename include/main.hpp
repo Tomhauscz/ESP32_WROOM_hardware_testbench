@@ -11,7 +11,8 @@ extern "C" {
     /* hardware specific includes */
     #include "driver/gpio.h"
     // externally connected devices
-    #include "vl53l0x.h"        // TOF sensor
+    #include "vl53l0x.h"        // TOF sensor VL53L0X
+    #include "VL6180X.h"        // TOF sensor VL6180X
     #include "pca9685.h"        // 16-channel 12-bit driver for servo motors
 
     /* logging includes */
@@ -31,21 +32,22 @@ extern "C" {
 
 #include <RotaryEncoder.hpp>        // Custom rotary encoder library
 
-#define DISPLAY_DRIVER_ST7789       0
-#define DISPLAY_DRIVER_ST7796       1
-
 /* Global defines */
 #define I2C_FREQ_HZ                         100000 // 100 kHz
 #define I2C_PORT_NUM                        I2C_NUM_0
-// TOF sensor
-#define TOF_sensor_I2C_PORT_NUM				I2C_PORT_NUM
-#define TOF_sensor_I2C_address				0x29
+// == TOF sensors
+// VL53L0X
+#define TOF_VL53L0X_sensor_I2C_address		0x29
 
-// Buttons
+// VL6180X
+
+
+// == Buttons
 #define BTN1_PIN    GPIO_NUM_36
 #define BTN2_PIN    GPIO_NUM_39
 #define BTN3_PIN    GPIO_NUM_34
 
+// == Servo motor
 // 16-channel PWM driver PCA9685
 #define Servo_PWM_driver_I2C_PORT_NUM		I2C_PORT_NUM
 #define Servo_PWM_driver_I2C_write_address	(PCA9685_ADDR_BASE | 0x14)       // (0b01 010100) - lower 6 bit are setup in hardware
@@ -68,6 +70,12 @@ extern "C" {
 
 #define TOF_SENSOR_RESTART_PERIOD           30000
 
+
+// === ENABLE/DISABLE CONNECTED DEVICES (by commenting/uncommenting their defines) ===
+//#define SERVO_PWM_DRIVER_PCA9685_CONNECTED
+//#define TOF_VL53L0X_CONNECTED
+#define TOF_VL6180X_CONNECTED
+
 /* TYPEDEFS */
 typedef enum {
     BTN1 = 0,
@@ -76,7 +84,8 @@ typedef enum {
 } BTN_nums;
 
 static const char *I2C_scan_tag     = "[I2C scan]";
-static const char* TOF_tag          = TAG_VL53L0X;
+static const char* TOF_VL53L0X_tag  = TAG_VL53L0X;
+static const char* TOF_VL6180X_tag  = "[TOF VL6180X]";
 static const char* DISP_tag         = "[TFT display]";
 static const char* BTNS_tag         = "[Buttons]";
 static const char* ROTENC_tag       = TAG_rotary_encoder;
@@ -90,9 +99,9 @@ typedef struct {
 
 /* function declarations */
 // FreeRTOS tasks
-void TOF_sensor_meas_task(void *pvParameter);
+void TOF_VL53L0X_sensor_meas_task(void *pvParameter);
+void TOF_VL6180X_sensor_meas_task(void *pvParameter);
 void TFT_ST7789_display_task(void *pvParameter);
-void Counter_disp_task(void *pvParameter);
 void Buttons_task(void *pvParameter);
 void Rotary_encoder_task(void *pvParameter);
 void Servo_motors_task(void* pvParameter);

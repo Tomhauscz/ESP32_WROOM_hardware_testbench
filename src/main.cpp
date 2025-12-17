@@ -11,10 +11,13 @@
 // I2C bus
 static i2c_dev_t i2c_bus;
 
-// VL53L0X sensor instance
-static vl53l0x_t* TOF_device;
+// == TOF sensors
 static i2c_dev_t TOF_i2c_dev;
 volatile uint16_t TOF_distance = 0;
+// VL53L0X sensor instance
+static vl53l0x_t* TOF_VL53L0X_device;
+// VL6180X sensor class instance
+static VL6180X TOF_VL6180X_device;
 
 // ST7789 TFT display instance
 static LGFX disp;
@@ -57,31 +60,45 @@ extern "C" void app_main(void)
 	ESP_ERROR_CHECK(i2c_dev_create_mutex(&i2c_bus));
 	
 	/* === per-device descriptors cloning of shared I2C bus */
+#ifdef TOF_VL53L0X_CONNECTED
 	TOF_i2c_dev = i2c_bus;
-	TOF_i2c_dev.addr = TOF_sensor_I2C_address;
+	TOF_i2c_dev.addr = TOF_VL53L0X_sensor_I2C_address;
 	TOF_i2c_dev.addr_bit_len = I2C_ADDR_BIT_LEN_7;
+#endif
 
+#ifdef SERVO_PWM_DRIVER_PCA9685_CONNECTED
 	PCA9685_i2c_dev = i2c_bus;
 	PCA9685_i2c_dev.addr = Servo_PWM_driver_I2C_write_address;
 	PCA9685_i2c_dev.addr_bit_len = I2C_ADDR_BIT_LEN_7;
+#endif
 
 	/* === init the TOF device */
-	TOF_device = vl53l0x_config(&TOF_i2c_dev, GPIO_NUM_16, 0);
-	esp_err_t tof_init_err = vl53l0x_init(TOF_device);
+#ifdef TOF_VL53L0X_CONNECTED
+	TOF_VL53L0X_device = vl53l0x_config(&TOF_i2c_dev, GPIO_NUM_16, 0);
+	esp_err_t tof_init_err = vl53l0x_init(TOF_VL53L0X_device);
 
 	char tof_init_err_txt[140];
 	if (tof_init_err != ESP_OK) {
-		vl53l0x_error_t tof_init_err_code = vl53l0x_getError(TOF_device);
+		vl53l0x_error_t tof_init_err_code = vl53l0x_getError(TOF_VL53L0X_device);
 		sprintf(tof_init_err_txt, "FAIL 0x%02X (%s)", tof_init_err_code, vl53l0x_err_to_name(tof_init_err_code));
 	} else {
 		sprintf(tof_init_err_txt, "Success");
 	}
-	ESP_LOGI(TOF_tag, "Init return value: %s", tof_init_err_txt);
+	ESP_LOGI(TOF_VL53L0X_tag, "Init return value: %s", tof_init_err_txt);
 	
 	// start continuous measurements
-	esp_err_t tof_cont_meas_err = vl53l0x_startContinuous(TOF_device, TOF_SENSOR_MEAS_TASK_PERIOD);
-	ESP_LOGI(TOF_tag, "Starting continuous measurements: %s", (tof_cont_meas_err != ESP_OK) ? "FAIL" : "Success");
-	
+	esp_err_t tof_cont_meas_err = vl53l0x_startContinuous(TOF_VL53L0X_device, TOF_SENSOR_MEAS_TASK_PERIOD);
+	ESP_LOGI(TOF_VL53L0X_tag, "Starting continuous measurements: %s", (tof_cont_meas_err != ESP_OK) ? "FAIL" : "Success");
+#elifdef TOF_VL6180X_CONNECTED
+	TOF_VL6180X_device = VL6180X(i2c_bus.port);
+	TOF_VL6180X_device.i2cMasterInit(i2c_bus.cfg.sda_io_num, i2c_bus.cfg.scl_io_num);
+	if (!TOF_VL6180X_device.init()) {
+		ESP_LOGE(TOF_VL6180X_tag, "Sensor init failure!");
+	} else {
+		ESP_LOGI(TOF_VL6180X_tag, "Initialization complete!");
+	}
+#endif
+
 
 	/* === init TFT display */
 	disp.LGFX_config(GPIO_NUM_17, GPIO_NUM_18, GPIO_NUM_5, GPIO_NUM_25, PANEL_ST7796);		// My wrapper config
@@ -115,6 +132,7 @@ extern "C" void app_main(void)
 	rotenc->init();
 
 	/* === init PCA9685 driver for Servo motors */
+#ifdef SERVO_PWM_DRIVER_PCA9685_CONNECTED
 	ESP_ERROR_CHECK(pca9685_init(&PCA9685_i2c_dev));
 	// restart the device
 	ESP_ERROR_CHECK(pca9685_restart(&PCA9685_i2c_dev));
@@ -124,10 +142,14 @@ extern "C" void app_main(void)
 	ESP_ERROR_CHECK(pca9685_get_pwm_frequency(&PCA9685_i2c_dev, &PCA9685_PWM_freq_actual));
 
 	ESP_LOGI(PCA9685_tag, "Setup freq: %dHz, actual: %dHz", Servo_PWM_driver_I2C_PWM_freq, PCA9685_PWM_freq_actual);
-
+#endif
 
 	// === check if both i2c devices share the same mutex after their initialization
+#if defined(SERVO_PWM_DRIVER_PCA9685_CONNECTED) && \
+	defined(TOF_VL53L0X_CONNECTED)
+
 	assert(TOF_i2c_dev.mutex == PCA9685_i2c_dev.mutex);
+#endif
 
 	/* ====== Other initial setup ====== */
 
@@ -148,35 +170,62 @@ extern "C" void app_main(void)
 	xTaskCreate(Timer_task, "Timer_task", 2048, NULL, 8, NULL);
 	xTaskCreate(Buttons_task, "Buttons_task", 4096, NULL, 10, NULL);
 	xTaskCreate(Rotary_encoder_task, "Rotary_encoder_task", 4096, NULL, 6, NULL);
+
+#ifdef TOF_VL53L0X_CONNECTED
 	if (tof_cont_meas_err == ESP_OK) {
-		xTaskCreate(TOF_sensor_meas_task, "TOF_sensor_meas_task", 4096, NULL, 5, NULL);
+		xTaskCreate(TOF_VL53L0X_sensor_meas_task, "TOF_VL53L0X_sensor_meas_task", 4096, NULL, 5, NULL);
 	}
+#endif
+#ifdef TOF_VL6180X_CONNECTED
+	xTaskCreate(TOF_VL6180X_sensor_meas_task, "TOF_VL6180X_sensor_meas_task", 4096, NULL, 5, NULL);
+#endif
+
+#ifdef SERVO_PWM_DRIVER_PCA9685_CONNECTED
 	xTaskCreate(Servo_motors_task, "Servo_motors_task", 4096, NULL, 7, NULL);
+#endif
+
 	xTaskCreate(TFT_ST7789_display_task, "TFT_display_task", 4096, NULL, 9, NULL);
 }
 
 /* FreeRTOS task functions */
-void TOF_sensor_meas_task(void* pvParameter)
+void TOF_VL53L0X_sensor_meas_task(void* pvParameter)
 {
 	uint16_t measured_distance = 0x0000;
 
 	for (;;) {
-		esp_err_t read_ret = vl53l0x_readRangeContinuousMillimeters(TOF_device, &measured_distance);
+		esp_err_t read_ret = vl53l0x_readRangeContinuousMillimeters(TOF_VL53L0X_device, &measured_distance);
 
 		if (read_ret != ESP_OK) {
-			vl53l0x_error_t tof_err = vl53l0x_getError(TOF_device);
-			ESP_LOGE(TOF_tag, "Reading range error: 0x%02X (%s)", tof_err, vl53l0x_err_to_name(tof_err));
+			vl53l0x_error_t tof_err = vl53l0x_getError(TOF_VL53L0X_device);
+			ESP_LOGE(TOF_VL53L0X_tag, "Reading range error: 0x%02X (%s)", tof_err, vl53l0x_err_to_name(tof_err));
 
 			// Recovery: restart continuous measurement
-			vl53l0x_stopContinuous(TOF_device);
+			vl53l0x_stopContinuous(TOF_VL53L0X_device);
 			vTaskDelay(pdMS_TO_TICKS(10));
-			vl53l0x_startContinuous(TOF_device, TOF_SENSOR_MEAS_TASK_PERIOD);
+			vl53l0x_startContinuous(TOF_VL53L0X_device, TOF_SENSOR_MEAS_TASK_PERIOD);
 		} else {
 			TOF_distance = measured_distance;
 		}
 
 		vTaskDelay(pdMS_TO_TICKS(TOF_SENSOR_MEAS_TASK_PERIOD));
 	}
+}
+
+void TOF_VL6180X_sensor_meas_task(void* pvParameter)
+{
+	uint16_t measured_distance = 0x0000;
+
+	for (;;) {
+		bool read_ret = TOF_VL6180X_device.read(&measured_distance);
+
+		if (read_ret) {
+			TOF_distance = measured_distance;
+		} else {
+			ESP_LOGE(TOF_VL6180X_tag, "Measurement failed!");
+		}
+	}
+
+	vTaskDelay(pdMS_TO_TICKS(TOF_SENSOR_MEAS_TASK_PERIOD));
 }
 
 void TFT_ST7789_display_task(void* pvParameter)
@@ -224,7 +273,8 @@ void TFT_ST7789_display_task(void* pvParameter)
 			sprintf(counter_txt, "Counter: %lld", rot_counter);
 			disp.print(counter_txt);
 		}
-
+#if defined(TOF_VL53L0X_CONNECTED) || \
+	defined(TOF_VL6180X_CONNECTED)	
 		if (TOF_distance != TOF_distance_prev) {
 			TOF_distance_prev = TOF_distance;
 
@@ -236,6 +286,7 @@ void TFT_ST7789_display_task(void* pvParameter)
 			sprintf(tof_distance_txt, "Dist: %dmm", TOF_distance);
 			disp.print(tof_distance_txt);
 		}
+#endif
 		
 		vTaskDelay(pdMS_TO_TICKS(TFT_ST7789_DISPLAY_TASK_PERIOD));
 	}
