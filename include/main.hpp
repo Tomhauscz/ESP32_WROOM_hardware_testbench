@@ -8,12 +8,13 @@ extern "C" {
     /* common C includes */
     #include <stdio.h>
 
+    /* Non-volatile Storage flash memory */
+    #include <nvs_flash.h>
+
     /* hardware specific includes */
     #include "driver/gpio.h"
     // externally connected devices
-    #include "vl53l0x.h"        // TOF sensor VL53L0X
     #include "VL6180X.h"        // TOF sensor VL6180X
-    #include "pca9685.h"        // 16-channel 12-bit driver for servo motors
 
     /* logging includes */
     #include "esp_log.h"
@@ -35,12 +36,10 @@ extern "C" {
 /* Global defines */
 #define I2C_FREQ_HZ                         100000 // 100 kHz
 #define I2C_PORT_NUM                        I2C_NUM_0
-// == TOF sensors
-// VL53L0X
-#define TOF_VL53L0X_sensor_I2C_address		0x29
-
+#define I2C_SDA_IO_NUM                      GPIO_NUM_21
+#define I2C_SCL_IO_NUM                      GPIO_NUM_22
+// == TOF sensor
 // VL6180X
-
 
 // == Buttons
 #define BTN1_PIN    GPIO_NUM_36
@@ -73,7 +72,6 @@ extern "C" {
 
 // === ENABLE/DISABLE CONNECTED DEVICES (by commenting/uncommenting their defines) ===
 //#define SERVO_PWM_DRIVER_PCA9685_CONNECTED
-//#define TOF_VL53L0X_CONNECTED
 #define TOF_VL6180X_CONNECTED
 
 /* TYPEDEFS */
@@ -84,7 +82,6 @@ typedef enum {
 } BTN_nums;
 
 static const char *I2C_scan_tag     = "[I2C scan]";
-static const char* TOF_VL53L0X_tag  = TAG_VL53L0X;
 static const char* TOF_VL6180X_tag  = "[TOF VL6180X]";
 static const char* DISP_tag         = "[TFT display]";
 static const char* BTNS_tag         = "[Buttons]";
@@ -99,7 +96,6 @@ typedef struct {
 
 /* function declarations */
 // FreeRTOS tasks
-void TOF_VL53L0X_sensor_meas_task(void *pvParameter);
 void TOF_VL6180X_sensor_meas_task(void *pvParameter);
 void TFT_ST7789_display_task(void *pvParameter);
 void Buttons_task(void *pvParameter);
@@ -109,7 +105,6 @@ void Timer_task(void *pvParameter);
 
 /* Non-task functions */
 // other functions
-void i2c_scan(void);
 uint16_t getServoCounts(float angle_deg);
 
 // interrupt functions
